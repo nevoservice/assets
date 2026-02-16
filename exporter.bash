@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Скрипт для поднятия node_exporter + xray_exporter + prometheus через systemd
-# Prometheus доступен только с одного указанного IP через UFW (порт 9898)
+# Prometheus доступен только с одного указанного IP через UFW (порт 9898) (1.1 version)
 # =============================================================================
 
 set -euo pipefail
@@ -66,11 +66,9 @@ echo -e "${GREEN}UFW настроен:${NC}"
 sudo ufw status | grep 9898 || echo "Правило не отображается — проверьте вручную"
 
 # ─── 4. Скачиваем и устанавливаем бинарники ──────────────────────────────────
-PROM_VERSION="2.55.1"
+PROM_VERSION="3.0.0"                  # актуальная стабильная на 2026
 NODE_VERSION="1.10.2"
-XRAY_EXPORTER_REPO="compassvpn/xray-exporter"   # актуальный форк с бинарниками в 2026
-
-ARCH="amd64"
+ARCH="amd64"                          # arm64 / armv7 и т.д. — измени здесь
 OS="linux"
 
 echo -e "${YELLOW}Скачиваем Prometheus v${PROM_VERSION}...${NC}"
@@ -79,19 +77,22 @@ tar xzf "prometheus-${PROM_VERSION}.${OS}-${ARCH}.tar.gz"
 sudo mv "prometheus-${PROM_VERSION}.${OS}-${ARCH}/prometheus"     /usr/local/bin/
 sudo mv "prometheus-${PROM_VERSION}.${OS}-${ARCH}/promtool"       /usr/local/bin/
 rm -rf "prometheus-${PROM_VERSION}."*
+[ ! -f /usr/local/bin/prometheus ] && { echo -e "${RED}Ошибка: prometheus не скачался${NC}"; exit 1; }
 
 echo -e "${YELLOW}Скачиваем Node Exporter v${NODE_VERSION}...${NC}"
 wget -q --show-progress "https://github.com/prometheus/node_exporter/releases/download/v${NODE_VERSION}/node_exporter-${NODE_VERSION}.${OS}-${ARCH}.tar.gz"
 tar xzf "node_exporter-${NODE_VERSION}.${OS}-${ARCH}.tar.gz"
 sudo mv "node_exporter-${NODE_VERSION}.${OS}-${ARCH}/node_exporter" /usr/local/bin/
 rm -rf "node_exporter-${NODE_VERSION}."*
+[ ! -f /usr/local/bin/node_exporter ] && { echo -e "${RED}Ошибка: node_exporter не скачался${NC}"; exit 1; }
 
-# xray-exporter — берём из актуального репозитория с бинарниками
-echo -e "${YELLOW}Скачиваем xray-exporter (latest from ${XRAY_EXPORTER_REPO})...${NC}"
-wget -q --show-progress "https://github.com/${XRAY_EXPORTER_REPO}/releases/latest/download/xray-exporter_${OS}_${ARCH}" -O /usr/local/bin/xray-exporter
+# xray-exporter из актуального репозитория (compassvpn fork, релиз 0.2.0 2026)
+echo -e "${YELLOW}Скачиваем xray-exporter (latest from compassvpn/xray-exporter)...${NC}"
+wget -q --show-progress "https://github.com/compassvpn/xray-exporter/releases/latest/download/xray-exporter_${OS}_${ARCH}" -O /usr/local/bin/xray-exporter
 chmod +x /usr/local/bin/xray-exporter
+[ ! -f /usr/local/bin/xray-exporter ] && { echo -e "${RED}Ошибка: xray-exporter не скачался (проверьте интернет или репозиторий)${NC}"; exit 1; }
 
-# Права на все бинарники
+# Права
 sudo chown root:root /usr/local/bin/prometheus /usr/local/bin/promtool /usr/local/bin/node_exporter /usr/local/bin/xray-exporter
 sudo chmod 755 /usr/local/bin/prometheus /usr/local/bin/promtool /usr/local/bin/node_exporter /usr/local/bin/xray-exporter
 
@@ -124,7 +125,6 @@ sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
 
 # ─── 6. systemd юниты ────────────────────────────────────────────────────────
 
-# node-exporter
 cat > /etc/systemd/system/node-exporter.service << 'EOF'
 [Unit]
 Description=Prometheus Node Exporter
@@ -147,7 +147,6 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# xray-exporter
 cat > /etc/systemd/system/xray-exporter.service << 'EOF'
 [Unit]
 Description=Xray Prometheus Exporter
@@ -158,7 +157,7 @@ User=xray_exporter
 Group=xray_exporter
 Type=simple
 ExecStart=/usr/local/bin/xray-exporter \
-  --v2ray-endpoint=127.0.0.1:54321   # ← ИЗМЕНИТЕ НА РЕАЛЬНЫЙ АДРЕС API Xray
+  --v2ray-endpoint=127.0.0.1:54321   # ← ИЗМЕНИТЕ НА РЕАЛЬНЫЙ АДРЕС API Xray (обычно 127.0.0.1:54321 или unix socket)
 Restart=always
 RestartSec=10
 
@@ -166,7 +165,6 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# prometheus
 cat > /etc/systemd/system/prometheus.service << EOF
 [Unit]
 Description=Prometheus Server
@@ -201,17 +199,17 @@ echo -e "${GREEN}┌────────────────────
 echo -e "${GREEN}│ Prometheus    → http://<ваш_IP>:9898            │${NC}"
 echo -e "${GREEN}│ Доступ ТОЛЬКО с: $ALLOWED_IP                    │${NC}"
 echo -e "${GREEN}│ Node Exporter → http://localhost:9100/metrics   │${NC}"
-echo -e "${GREEN}│ Xray  Exporter → http://localhost:9400/metrics  │${NC}"
+echo -e "${GREEN}│ Xray Exporter → http://localhost:9400/metrics   │${NC}"
 echo -e "${GREEN}└─────────────────────────────────────────────────┘${NC}"
 echo ""
 
 echo -e "Важно: отредактируйте ${YELLOW}/etc/systemd/system/xray-exporter.service${NC}"
-echo -e "       параметр --v2ray-endpoint=... на реальный адрес API Xray"
+echo -e "       параметр --v2ray-endpoint=... (обычно 127.0.0.1:54321 для Xray API)"
 echo -e "       После правки: ${YELLOW}sudo systemctl daemon-reload && sudo systemctl restart xray-exporter${NC}"
 echo ""
-echo -e "Статус сервисов:"
+echo -e "Статус сервисов (проверьте!):"
 echo -e "  ${YELLOW}sudo systemctl status node-exporter${NC}"
 echo -e "  ${YELLOW}sudo systemctl status xray-exporter${NC}"
 echo -e "  ${YELLOW}sudo systemctl status prometheus${NC}"
 echo ""
-echo -e "Логи: ${YELLOW}journalctl -u prometheus -f${NC}   (аналогично для остальных)"
+echo -e "Логи: ${YELLOW}journalctl -u xray-exporter -f${NC}   (и аналогично для остальных)"
