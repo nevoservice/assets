@@ -157,7 +157,7 @@ User=xray_exporter
 Group=xray_exporter
 Type=simple
 ExecStart=/usr/local/bin/xray-exporter \
-  --v2ray-endpoint=127.0.0.1:54321   # ← ИЗМЕНИТЕ НА РЕАЛЬНЫЙ АДРЕС API Xray (обычно 127.0.0.1:54321 или unix socket)
+  --xray-endpoint=127.0.0.1:54321   # ← ИЗМЕНИТЕ НА РЕАЛЬНЫЙ АДРЕС API Xray (обычно 127.0.0.1:54321 или unix socket)
 Restart=always
 RestartSec=10
 
