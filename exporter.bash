@@ -66,10 +66,11 @@ echo -e "${GREEN}UFW настроен:${NC}"
 sudo ufw status | grep 9898 || echo "Правило не отображается — проверьте вручную"
 
 # ─── 4. Скачиваем и устанавливаем бинарники ──────────────────────────────────
-PROM_VERSION="2.55.1"          # актуальная на момент написания — обновите при необходимости
-NODE_VERSION="1.10.2"          # последняя на февраль 2026
+PROM_VERSION="2.55.1"
+NODE_VERSION="1.10.2"
+XRAY_EXPORTER_REPO="compassvpn/xray-exporter"   # актуальный форк с бинарниками в 2026
 
-ARCH="amd64"                   # измените на arm64 / armv7 и т.д. при необходимости
+ARCH="amd64"
 OS="linux"
 
 echo -e "${YELLOW}Скачиваем Prometheus v${PROM_VERSION}...${NC}"
@@ -85,14 +86,14 @@ tar xzf "node_exporter-${NODE_VERSION}.${OS}-${ARCH}.tar.gz"
 sudo mv "node_exporter-${NODE_VERSION}.${OS}-${ARCH}/node_exporter" /usr/local/bin/
 rm -rf "node_exporter-${NODE_VERSION}."*
 
-# xray-exporter (берём master, т.к. тегов почти нет)
-echo -e "${YELLOW}Скачиваем xray-exporter (master)...${NC}"
-wget -q --show-progress https://github.com/wi1dcard/v2ray-exporter/releases/download/master/v2ray-exporter_linux_amd64 -O /usr/local/bin/v2ray-exporter
-chmod +x /usr/local/bin/v2ray-exporter
+# xray-exporter — берём из актуального репозитория с бинарниками
+echo -e "${YELLOW}Скачиваем xray-exporter (latest from ${XRAY_EXPORTER_REPO})...${NC}"
+wget -q --show-progress "https://github.com/${XRAY_EXPORTER_REPO}/releases/latest/download/xray-exporter_${OS}_${ARCH}" -O /usr/local/bin/xray-exporter
+chmod +x /usr/local/bin/xray-exporter
 
-# Права
-sudo chown root:root /usr/local/bin/prometheus /usr/local/bin/promtool /usr/local/bin/node_exporter /usr/local/bin/v2ray-exporter
-sudo chmod 755 /usr/local/bin/prometheus /usr/local/bin/promtool /usr/local/bin/node_exporter /usr/local/bin/v2ray-exporter
+# Права на все бинарники
+sudo chown root:root /usr/local/bin/prometheus /usr/local/bin/promtool /usr/local/bin/node_exporter /usr/local/bin/xray-exporter
+sudo chmod 755 /usr/local/bin/prometheus /usr/local/bin/promtool /usr/local/bin/node_exporter /usr/local/bin/xray-exporter
 
 # ─── 5. Директории и конфиги ─────────────────────────────────────────────────
 sudo mkdir -p /etc/prometheus /var/lib/prometheus
@@ -124,7 +125,7 @@ sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
 # ─── 6. systemd юниты ────────────────────────────────────────────────────────
 
 # node-exporter
-cat > /tmp/node-exporter.service << 'EOF'
+cat > /etc/systemd/system/node-exporter.service << 'EOF'
 [Unit]
 Description=Prometheus Node Exporter
 After=network-online.target
@@ -145,19 +146,18 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo mv /tmp/node-exporter.service /etc/systemd/system/
 
-# xray-exporter (замените endpoint на реальный!)
-cat > /tmp/xray-exporter.service << 'EOF'
+# xray-exporter
+cat > /etc/systemd/system/xray-exporter.service << 'EOF'
 [Unit]
-Description=Xray / V2Ray Prometheus Exporter
+Description=Xray Prometheus Exporter
 After=network-online.target
 
 [Service]
 User=xray_exporter
 Group=xray_exporter
 Type=simple
-ExecStart=/usr/local/bin/v2ray-exporter \
+ExecStart=/usr/local/bin/xray-exporter \
   --v2ray-endpoint=127.0.0.1:54321   # ← ИЗМЕНИТЕ НА РЕАЛЬНЫЙ АДРЕС API Xray
 Restart=always
 RestartSec=10
@@ -165,10 +165,9 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo mv /tmp/xray-exporter.service /etc/systemd/system/
 
 # prometheus
-cat > /tmp/prometheus.service << EOF
+cat > /etc/systemd/system/prometheus.service << EOF
 [Unit]
 Description=Prometheus Server
 After=network-online.target
@@ -189,7 +188,6 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo mv /tmp/prometheus.service /etc/systemd/system/
 
 # ─── 7. Запуск и автозагрузка ────────────────────────────────────────────────
 sudo systemctl daemon-reload
@@ -203,17 +201,17 @@ echo -e "${GREEN}┌────────────────────
 echo -e "${GREEN}│ Prometheus    → http://<ваш_IP>:9898            │${NC}"
 echo -e "${GREEN}│ Доступ ТОЛЬКО с: $ALLOWED_IP                    │${NC}"
 echo -e "${GREEN}│ Node Exporter → http://localhost:9100/metrics   │${NC}"
-echo -e "${GREEN}│ Xray Exporter → http://localhost:9400/metrics   │${NC}"
+echo -e "${GREEN}│ Xray  Exporter → http://localhost:9400/metrics  │${NC}"
 echo -e "${GREEN}└─────────────────────────────────────────────────┘${NC}"
 echo ""
 
 echo -e "Важно: отредактируйте ${YELLOW}/etc/systemd/system/xray-exporter.service${NC}"
-echo -e "       строку --v2ray-endpoint=... на реальный адрес API Xray"
-echo -e "       После изменения: ${YELLOW}sudo systemctl daemon-reload && sudo systemctl restart xray-exporter${NC}"
+echo -e "       параметр --v2ray-endpoint=... на реальный адрес API Xray"
+echo -e "       После правки: ${YELLOW}sudo systemctl daemon-reload && sudo systemctl restart xray-exporter${NC}"
 echo ""
 echo -e "Статус сервисов:"
 echo -e "  ${YELLOW}sudo systemctl status node-exporter${NC}"
 echo -e "  ${YELLOW}sudo systemctl status xray-exporter${NC}"
 echo -e "  ${YELLOW}sudo systemctl status prometheus${NC}"
 echo ""
-echo -e "Логи: ${YELLOW}journalctl -u prometheus -f${NC}  (или -u node-exporter и т.д.)"
+echo -e "Логи: ${YELLOW}journalctl -u prometheus -f${NC}   (аналогично для остальных)"
