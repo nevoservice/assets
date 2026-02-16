@@ -14,7 +14,7 @@ NC='\033[0m'
 
 echo -e "${GREEN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${GREEN}│   Мониторинг: node_exporter + xray_exporter + prometheus   │${NC}"
-echo -e "${GREEN}│               Prometheus → порт 9898 (только 1 IP)          │${NC}"
+echo -e "${GREEN}│     Prometheus → порт 9898 (только 1 IP)  (Systemd)        │${NC}"
 echo -e "${GREEN}└─────────────────────────────────────────────────────────────┘${NC}"
 echo ""
 
