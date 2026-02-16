@@ -88,7 +88,7 @@ rm -rf "node_exporter-${NODE_VERSION}."*
 
 # xray-exporter из актуального репозитория (compassvpn fork, релиз 0.2.0 2026)
 echo -e "${YELLOW}Скачиваем xray-exporter (latest from compassvpn/xray-exporter)...${NC}"
-wget -q --show-progress "https://github.com/compassvpn/xray-exporter/releases/latest/download/xray-exporter_${OS}_${ARCH}" -O /usr/local/bin/xray-exporter
+wget -q --show-progress "https://github.com/compassvpn/xray-exporter/releases/download/v0.2.0/xray-exporter-${OS}-${ARCH}" -O /usr/local/bin/xray-exporter
 chmod +x /usr/local/bin/xray-exporter
 [ ! -f /usr/local/bin/xray-exporter ] && { echo -e "${RED}Ошибка: xray-exporter не скачался (проверьте интернет или репозиторий)${NC}"; exit 1; }
 
